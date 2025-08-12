@@ -1,5 +1,6 @@
-# Use this for the email extraction -> not for use 
-"""Google Maps Scraper with Improved Email Extraction"""
+# use this as the main file
+
+"""Google Maps Scraper without Email Extraction"""
 
 from playwright.sync_api import sync_playwright
 from dataclasses import dataclass, asdict, field
@@ -7,7 +8,6 @@ import pandas as pd
 import argparse
 import os
 import sys
-import re
 
 @dataclass
 class Business:
@@ -17,7 +17,6 @@ class Business:
     phone_number: str = None
     reviews_count: int = None
     reviews_average: float = None
-    email: str = None
 
 @dataclass
 class BusinessList:
@@ -38,21 +37,6 @@ class BusinessList:
         if not os.path.exists(self.save_at):
             os.makedirs(self.save_at)
         self.dataframe().to_csv(f"{self.save_at}/{filename}.csv", index=False)
-
-
-def extract_email_from_website(page, url):
-    """Visit the website and extract email addresses"""
-    try:
-        page.goto(url, timeout=15000)
-        page.wait_for_timeout(3000)
-        content = page.content()
-        emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', content)
-        if emails:
-            return emails[0]
-    except Exception as e:
-        print(f"Error extracting email from {url}: {e}")
-    return ""
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -103,7 +87,6 @@ def main():
                     listings = page.locator(
                         '//a[contains(@href, "https://www.google.com/maps/place")]'
                     ).all()[:total]
-                    listings = [listing.locator("xpath=..") for listing in listings]
                     print(f"Total Scraped: {len(listings)}")
                     break
                 elif count_now == previously_counted:
@@ -120,21 +103,18 @@ def main():
 
             for listing in listings:
                 try:
+                    business = Business()
+
+                    business.name = listing.get_attribute('aria-label') or ""
+
                     listing.click()
                     page.wait_for_timeout(5000)
 
-                    name_attribute = 'aria-label'
                     address_xpath = '//button[@data-item-id="address"]//div[contains(@class, "fontBodyMedium")]'
                     website_xpath = '//a[@data-item-id="authority"]//div[contains(@class, "fontBodyMedium")]'
                     phone_number_xpath = '//button[contains(@data-item-id, "phone:tel:")]//div[contains(@class, "fontBodyMedium")]'
                     review_count_xpath = '//button[@jsaction="pane.reviewChart.moreReviews"]//span'
                     reviews_average_xpath = '//div[@jsaction="pane.reviewChart.moreReviews"]//div[@role="img"]'
-                    email_xpath = '//a[contains(@href, "mailto:")]'
-
-                    business = Business()
-
-                    name_value = listing.get_attribute(name_attribute)
-                    business.name = name_value if name_value else ""
 
                     business.address = page.locator(address_xpath).all()[0].inner_text() if page.locator(address_xpath).count() > 0 else ""
                     business.website = page.locator(website_xpath).all()[0].inner_text() if page.locator(website_xpath).count() > 0 else ""
@@ -149,19 +129,10 @@ def main():
 
                     if page.locator(reviews_average_xpath).count() > 0:
                         business.reviews_average = float(
-                            page.locator(reviews_average_xpath).get_attribute(name_attribute).split()[0].replace(',', '.').strip()
+                            page.locator(reviews_average_xpath).get_attribute('aria-label').split()[0].replace(',', '.').strip()
                         )
                     else:
                         business.reviews_average = ""
-
-                    # Improved email extraction
-                    if page.locator(email_xpath).count() > 0:
-                        email_href = page.locator(email_xpath).get_attribute('href')
-                        business.email = email_href.replace('mailto:', '').strip() if email_href else ""
-                    elif business.website and business.website.startswith("http"):
-                        business.email = extract_email_from_website(page, business.website)
-                    else:
-                        business.email = ""
 
                     business_list.business_list.append(business)
 
@@ -173,7 +144,6 @@ def main():
             business_list.save_to_csv(filename)
 
         browser.close()
-
 
 if __name__ == "__main__":
     main()

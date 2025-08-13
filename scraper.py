@@ -1,4 +1,4 @@
-# use this as the main file
+# use this as the main file for the google maps scraper 
 
 """Google Maps Scraper without Email Extraction"""
 
